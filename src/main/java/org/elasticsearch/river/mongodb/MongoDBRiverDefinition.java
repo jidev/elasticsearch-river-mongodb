@@ -1,6 +1,9 @@
 package org.elasticsearch.river.mongodb;
 
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
 import java.net.UnknownHostException;
+import java.security.KeyStore;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
@@ -11,6 +14,8 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.net.SocketFactory;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
@@ -60,6 +65,7 @@ public class MongoDBRiverDefinition {
     public final static String SOCKET_TIMEOUT = "socket_timeout";
     public final static String SSL_CONNECTION_FIELD = "ssl";
     public final static String SSL_VERIFY_CERT_FIELD = "ssl_verify_certificate";
+    public final static String SSL_CLIENT_CERT = "ssl_client_cert";
     public final static String DROP_COLLECTION_FIELD = "drop_collection";
     public final static String EXCLUDE_FIELDS_FIELD = "exclude_fields";
     public final static String INCLUDE_FIELDS_FIELD = "include_fields";
@@ -121,6 +127,7 @@ public class MongoDBRiverDefinition {
     private final boolean mongoSecondaryReadPreference;
     private final boolean mongoUseSSL;
     private final boolean mongoSSLVerifyCertificate;
+    private final String mongoSSLClientCertificate;
     private final boolean dropCollection;
     private final Set<String> excludeFields;
     private final Set<String> includeFields;
@@ -166,6 +173,7 @@ public class MongoDBRiverDefinition {
         private boolean mongoSecondaryReadPreference = false;
         private boolean mongoUseSSL = false;
         private boolean mongoSSLVerifyCertificate = false;
+        private String mongoSSLClientCertificate = "";
         private boolean dropCollection = false;
         private Set<String> excludeFields = null;
         private Set<String> includeFields = null;
@@ -273,6 +281,11 @@ public class MongoDBRiverDefinition {
 
         public Builder mongoSSLVerifyCertificate(boolean mongoSSLVerifyCertificate) {
             this.mongoSSLVerifyCertificate = mongoSSLVerifyCertificate;
+            return this;
+        }
+        
+        public Builder mongoSSLClientCertificate(String mongoSSLClientCertifacte) {
+            this.mongoSSLClientCertificate = mongoSSLClientCertifacte;
             return this;
         }
 
@@ -490,6 +503,7 @@ public class MongoDBRiverDefinition {
                 builder.dropCollection(XContentMapValues.nodeBooleanValue(mongoOptionsSettings.get(DROP_COLLECTION_FIELD), false));
                 builder.mongoUseSSL(XContentMapValues.nodeBooleanValue(mongoOptionsSettings.get(SSL_CONNECTION_FIELD), false));
                 builder.mongoSSLVerifyCertificate(XContentMapValues.nodeBooleanValue(mongoOptionsSettings.get(SSL_VERIFY_CERT_FIELD), true));
+                builder.mongoSSLClientCertificate(XContentMapValues.nodeStringValue(mongoOptionsSettings.get(SSL_CLIENT_CERT), ""));
                 builder.advancedTransformation(XContentMapValues.nodeBooleanValue(mongoOptionsSettings.get(ADVANCED_TRANSFORMATION_FIELD),
                         false));
                 builder.skipInitialImport(XContentMapValues.nodeBooleanValue(mongoOptionsSettings.get(SKIP_INITIAL_IMPORT_FIELD), false));
@@ -501,7 +515,7 @@ public class MongoDBRiverDefinition {
                 }
 
                 if (builder.mongoUseSSL) {
-                    mongoClientOptionsBuilder.socketFactory(getSSLSocketFactory());
+                    mongoClientOptionsBuilder.socketFactory(getSSLSocketFactory(builder.mongoSSLClientCertificate));
                 }
 
                 if (mongoOptionsSettings.containsKey(PARENT_TYPES_FIELD)) {
@@ -700,13 +714,34 @@ public class MongoDBRiverDefinition {
         return builder.build();
     }
 
-    private static SocketFactory getSSLSocketFactory() {
+    // clientCertFile is needed if the mongodb instance requires client certificate authentication
+    // clientCertFile is the name of file that contains the client PKCS12 SSL certificate.
+    private static SocketFactory getSSLSocketFactory(String clientCertFile) {
         SocketFactory sslSocketFactory;
+        KeyManager[] km = null;
+        
+        if (!clientCertFile.equals("")){
+            try {
+                // set up a key manager for our local credentials
+                KeyManagerFactory mgrFact = KeyManagerFactory.getInstance("SunX509");
+                KeyStore clientStore = KeyStore.getInstance("PKCS12");
+                
+                clientStore.load(new BufferedInputStream(new FileInputStream(clientCertFile)), "".toCharArray());
+                
+                mgrFact.init(clientStore, "".toCharArray());
+                km = mgrFact.getKeyManagers();
+            } catch (Exception ex) {
+                logger.error("Unable to load SSL client certificate file '"+clientCertFile+
+                        "', will attempt to create SSL connection without client certificate.", ex);
+            }
+        }
+        
         try {
             final TrustManager[] trustAllCerts = new TrustManager[] { new X509TrustManager() {
 
                 @Override
                 public X509Certificate[] getAcceptedIssuers() {
+                    //jamal was here
                     return null;
                 }
 
@@ -719,7 +754,7 @@ public class MongoDBRiverDefinition {
                 }
             } };
             final SSLContext sslContext = SSLContext.getInstance("SSL");
-            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            sslContext.init(km, trustAllCerts, new java.security.SecureRandom());
             // Create an ssl socket factory with our all-trusting manager
             sslSocketFactory = sslContext.getSocketFactory();
             return sslSocketFactory;
@@ -798,6 +833,7 @@ public class MongoDBRiverDefinition {
         this.mongoSecondaryReadPreference = builder.mongoSecondaryReadPreference;
         this.mongoUseSSL = builder.mongoUseSSL;
         this.mongoSSLVerifyCertificate = builder.mongoSSLVerifyCertificate;
+        this.mongoSSLClientCertificate = builder.mongoSSLClientCertificate;
         this.dropCollection = builder.dropCollection;
         this.excludeFields = builder.excludeFields;
         this.includeFields = builder.includeFields;
@@ -890,6 +926,10 @@ public class MongoDBRiverDefinition {
 
     public boolean isMongoSSLVerifyCertificate() {
         return mongoSSLVerifyCertificate;
+    }
+    
+    public String getMongoSSLClientCertificate() {
+        return mongoSSLClientCertificate;
     }
 
     public boolean isDropCollection() {
