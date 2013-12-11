@@ -154,10 +154,12 @@ public class MongoDBRiver extends AbstractRiverComponent implements River {
             // http://stackoverflow.com/questions/5270611/read-maven-properties-file-inside-jar-war-file
             logger.info("{} - {}", DESCRIPTION, MongoDBHelper.getRiverVersion());
             logger.info(
-                    "starting mongodb stream. options: secondaryreadpreference [{}], drop_collection [{}], include_collection [{}], throttlesize [{}], gridfs [{}], filter [{}], db [{}], collection [{}], script [{}], indexing to [{}]/[{}]",
+                    "starting mongodb stream. options: secondaryreadpreference [{}], drop_collection [{}], include_collection [{}], throttlesize [{}], gridfs [{}], filter [{}], db [{}], collection [{}], script [{}], indexing to [{}]/[{}]"
+                    +", useSSL [{}], sslclientcertfile [{}]",
                     definition.isMongoSecondaryReadPreference(), definition.isDropCollection(), definition.getIncludeCollection(),
                     definition.getThrottleSize(), definition.isMongoGridFS(), definition.getMongoOplogFilter(), definition.getMongoDb(),
-                    definition.getMongoCollection(), definition.getScript(), definition.getIndexName(), definition.getTypeName());
+                    definition.getMongoCollection(), definition.getScript(), definition.getIndexName(), definition.getTypeName(),
+                    definition.isMongoUseSSL(), definition.getMongoSSLClientCertificate());
 
             // Create the index if it does not exist
             try {
